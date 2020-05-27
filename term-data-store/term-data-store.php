@@ -74,6 +74,7 @@ function add_relationship( $post_type, $taxonomy ) {
 
 	add_action( 'save_post', get_save_post_hook( $post_type, $taxonomy ), 10, 3 );
 	add_action( 'create_' . $taxonomy, get_create_term_hook( $post_type, $taxonomy ) );
+	add_action( 'wp_trash_post', get_delete_post_hook( $post_type, $taxonomy ), 10, 1 );
 	get_relationship( $post_type, $taxonomy );
 
 }
@@ -237,6 +238,58 @@ function get_save_post_hook( $post_type, $taxonomy ) {
 	$existing_closures[$md5] = $closure;
 	return $closure;
 
+}
+
+/**
+ * Returns a closure to be used as the callback hooked to delete_post
+ *
+ * The closure will receive the post_type and taxonomy values through its use
+ * statement so that it will have the necessary data to filter out posts created
+ * for other post types and will know which taxonomy to check and remove terms
+ * for.
+ *
+ * The function stores references to the closures in a static variable using the
+ * md5 hash of "$post_type|$taxonomy" to generate the key. If that value exists,
+ * return it instead of creating a new copy.
+ *
+ * @uses get_the_terms()
+ * @uses wp_insert_term()
+ * @uses wp_set_object_terms()
+ *
+ * @param string $post_type
+ * @param string $taxonomy
+ *
+ * @return \Closure The callback
+ */
+function get_delete_post_hook( $post_type, $taxonomy ) {
+
+	static $existing_closures;
+	if ( ! isset( $existing_closures ) ) {
+		$existing_closures = array();
+	}
+
+	$md5 = md5( $post_type . '|' , $taxonomy );
+	if ( isset( $existing_closures[$md5] ) ) {
+		return $existing_closures[$md5];
+	}
+
+	$closure = function ( $post_id ) use ( $post_type, $taxonomy ) {
+		$post = get_post( $post_id );
+
+		if ( empty( $post ) || $post_type !== $post->post_type ) {
+			return;
+		}
+
+		$terms = wp_get_object_terms( $post_id, $taxonomy, ['fields' => 'ids'] );
+		if (count( $terms ) > 0 ) {
+            $term = $terms[0];
+            wp_delete_term($term, $taxonomy);
+        }
+	};
+
+	$existing_closures[$md5] = $closure;
+
+	return $closure;
 }
 
 /**
