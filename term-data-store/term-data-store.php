@@ -72,7 +72,7 @@ function add_relationship( $post_type, $taxonomy ) {
 	}
 	unset( $post_type_relationships, $taxonomy_relationships );
 
-	add_action( 'save_post', get_save_post_hook( $post_type, $taxonomy ), 10, 2 );
+	add_action( 'save_post', get_save_post_hook( $post_type, $taxonomy ), 10, 3 );
 	add_action( 'create_' . $taxonomy, get_create_term_hook( $post_type, $taxonomy ) );
 	get_relationship( $post_type, $taxonomy );
 
@@ -186,13 +186,34 @@ function get_save_post_hook( $post_type, $taxonomy ) {
 		return $existing_closures[$md5];
 	}
 
-	$closure = function ( $post_id, $post ) use ( $post_type, $taxonomy ) {
+	$closure = function ( $post_id, $post, $update ) use ( $post_type, $taxonomy ) {
 		if ( apply_filters( 'tds_balancing_from_post', balancing_relationship(), $post_type, $taxonomy, $post ) ) {
 			return;
 		}
-		if ( empty( $post ) || $post_type !== $post->post_type || ( 'publish' !== $post->post_status ) || get_the_terms( $post_id, $taxonomy ) ) {
+		if ( empty( $post ) || $post_type !== $post->post_type || ( 'publish' !== $post->post_status ) ) {
 			return;
 		}
+
+		// If the post already has a shadow taxonomy identified, let's make sure we're updating things when the post
+		// title changes.
+		if (get_the_terms($post_id, $taxonomy)) {
+			if ($update) {
+				// We want to use the sanitized post title as the new name of the term
+				$name = sanitize_title($post->post_title);
+
+				// Get the existing term
+				$terms = wp_get_object_terms($post->ID, $taxonomy, ['fields' => 'ids']);
+				if (count($terms) === 0) {
+					throw new \Exception('Error retrieving post terms');
+				}
+				$term = $terms[0];
+
+				wp_update_term($term, $taxonomy, ['name' => $post->post_title, 'slug' => $name]);
+			}
+
+			return;
+		}
+
 		balancing_relationship( true );
 
 		$term = get_term_by( 'slug', $post->post_name, $taxonomy, ARRAY_A );
