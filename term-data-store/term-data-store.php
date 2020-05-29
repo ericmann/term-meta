@@ -48,10 +48,11 @@ class Invalid_Input_Exception extends \Exception {
  *
  * @throws Invalid_Input_Exception If either post_type or taxonomy is invalid
  *
- * @param string $post_type The post type slug
- * @param string $taxonomy  The taxonomy slug
+ * @param string $post_type      The post type slug
+ * @param string $taxonomy       The taxonomy slug
+ * @param bool   $allow_children Create terms for both parent and child posts
  */
-function add_relationship( $post_type, $taxonomy ) {
+function add_relationship( $post_type, $taxonomy, $allow_children = true ) {
 
 	if ( ! get_post_type_object( $post_type ) ) {
 		throw new Invalid_Input_Exception( __FUNCTION__ . '() invalid post_type input.' );
@@ -77,6 +78,9 @@ function add_relationship( $post_type, $taxonomy ) {
 	add_action( 'wp_trash_post', get_delete_post_hook( $post_type, $taxonomy ), 10, 1 );
 	get_relationship( $post_type, $taxonomy );
 
+	if ( ! $allow_children ) {
+		add_filter( "tds_{$post_type}_{$taxonomy}_create_children", '__return_false' );
+	}
 }
 
 /**
@@ -192,6 +196,10 @@ function get_save_post_hook( $post_type, $taxonomy ) {
 			return;
 		}
 		if ( empty( $post ) || $post_type !== $post->post_type || ( 'publish' !== $post->post_status ) ) {
+			return;
+		}
+
+		if ( $post->post_parent !== 0 && ! apply_filters( "tds_{$post_type}_{$taxonomy}_create_children", true ) ) {
 			return;
 		}
 
